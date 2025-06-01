@@ -15,8 +15,8 @@ import {
 import {
   Notifications as NotificationsIcon,
   AccountCircle,
-  Message as MessageIcon,
   Add as AddIcon,
+  Chat as ChatIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,49 +45,65 @@ const Navbar = () => {
     navigate('/login');
   };
 
-  const handleMessages = () => {
-    navigate('/messages');
-  };
-
   const handleNewService = () => {
     navigate('/services/new');
   };
 
   return (
-    <AppBar position="static" sx={{ background: 'linear-gradient(45deg, #2196f3 30%, #1976d2 90%)' }}>
-      <Toolbar>
+    <AppBar 
+      position="fixed" 
+      elevation={0}
+      sx={{ 
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          background: 'rgba(255, 255, 255, 0.98)',
+        }
+      }}
+    >
+      <Toolbar sx={{ 
+        minHeight: '64px',
+        px: { xs: 2, sm: 4 },
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
         <Typography
           variant="h6"
           component="div"
-          sx={{ flexGrow: 1, cursor: 'pointer', color: 'white' }}
+          sx={{ 
+            flexGrow: 1, 
+            cursor: 'pointer',
+            color: 'primary.main',
+            fontWeight: 'bold',
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'translateX(4px)',
+            }
+          }}
           onClick={() => navigate('/')}
         >
-          SkillExchange
+          FreeEnder
         </Typography>
 
         {isAuthenticated ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Button
               variant="contained"
-              startIcon={<MessageIcon />}
-              onClick={handleMessages}
-              sx={{ 
-                backgroundColor: '#2196f3',
-                '&:hover': {
-                  backgroundColor: '#1976d2',
-                },
-              }}
-            >
-              Messages
-            </Button>
-            <Button
-              variant="contained"
               startIcon={<AddIcon />}
               onClick={handleNewService}
               sx={{ 
-                backgroundColor: '#4caf50',
+                backgroundColor: 'primary.main',
+                borderRadius: '8px',
+                px: 2,
+                py: 1,
+                transition: 'all 0.3s ease',
                 '&:hover': {
-                  backgroundColor: '#388e3c',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 2,
+                  backgroundColor: 'primary.dark',
                 },
               }}
             >
@@ -95,23 +111,30 @@ const Navbar = () => {
             </Button>
             <IconButton
               size="large"
-              color="inherit"
-              onClick={handleNotifications}
-              sx={{ ml: 2 }}
+              color="primary"
+              onClick={() => navigate('/chat')}
+              sx={{ 
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  backgroundColor: 'primary.light',
+                },
+              }}
             >
-              <Badge badgeContent={4} color="error">
-                <NotificationsIcon />
+              <Badge badgeContent={0} color="error">
+                <ChatIcon />
               </Badge>
             </IconButton>
 
             <IconButton
               size="large"
               onClick={handleMenu}
-              color="inherit"
+              color="primary"
               sx={{ 
-                color: 'white',
+                transition: 'all 0.3s ease',
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  transform: 'translateY(-2px)',
+                  backgroundColor: 'primary.light',
                 },
               }}
             >
@@ -130,55 +153,60 @@ const Navbar = () => {
                 sx: {
                   mt: 1.5,
                   minWidth: 200,
-                  borderRadius: 2,
+                  borderRadius: '12px',
                   boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
+                  animation: 'fadeIn 0.2s ease-out',
                 },
               }}
             >
-              <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
+              <MenuItem 
+                onClick={() => { navigate('/profile'); handleClose(); }}
+                sx={{ 
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: 'primary.light',
+                    color: 'primary.main',
+                  }
+                }}
+              >
                 Profile
               </MenuItem>
-              <MenuItem onClick={() => { navigate('/dashboard'); handleClose(); }}>
+              <MenuItem 
+                onClick={() => { navigate('/dashboard'); handleClose(); }}
+                sx={{ 
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: 'primary.light',
+                    color: 'primary.main',
+                  }
+                }}
+              >
                 Dashboard
               </MenuItem>
-              <MenuItem onClick={handleLogout}>
+              <MenuItem 
+                onClick={handleLogout}
+                sx={{ 
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: 'error.light',
+                    color: 'error.main',
+                  }
+                }}
+              >
                 Logout
-              </MenuItem>
-            </Menu>
-
-            <Menu
-              anchorEl={notificationsAnchorEl}
-              open={Boolean(notificationsAnchorEl)}
-              onClose={handleClose}
-              PaperProps={{
-                sx: {
-                  mt: 1.5,
-                  minWidth: 300,
-                  borderRadius: 2,
-                  boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
-                },
-              }}
-            >
-              <MenuItem onClick={handleClose}>
-                New message from John
-              </MenuItem>
-              <MenuItem onClick={handleClose}>
-                Service request accepted
-              </MenuItem>
-              <MenuItem onClick={handleClose}>
-                New skill exchange request
               </MenuItem>
             </Menu>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               color="inherit"
               onClick={() => navigate('/login')}
               sx={{ 
-                color: 'white',
+                color: 'primary.main',
+                transition: 'all 0.3s ease',
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: 'primary.light',
                 },
               }}
             >
@@ -188,10 +216,13 @@ const Navbar = () => {
               variant="contained"
               onClick={() => navigate('/register')}
               sx={{ 
-                backgroundColor: 'white',
-                color: '#2196f3',
+                backgroundColor: 'primary.main',
+                borderRadius: '8px',
+                transition: 'all 0.3s ease',
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 2,
+                  backgroundColor: 'primary.dark',
                 },
               }}
             >

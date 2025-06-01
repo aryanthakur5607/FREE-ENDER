@@ -2,30 +2,28 @@ const express = require('express');
 const router = express.Router();
 const Service = require('../models/service.model');
 const auth = require('../middleware/auth');
-const User = require('../models/user.model');
+const User = require('../models/User');
 
-// Get dashboard statistics
 router.get('/stats', auth, async (req, res) => {
   try {
     console.log('GET /stats route hit:', {
-      userId: req.user.userId,
+      userId: req.userId,
       method: req.method,
       url: req.originalUrl
     });
 
-    if (!req.user || !req.user.userId) {
+    if (!req.userId) {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
-    const userId = req.user.userId;
+    const userId = req.userId;
 
-    // Get user data
+  
     const user = await User.findById(userId).select('credits rating');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Get service statistics
     const [
       totalServices,
       activeServices,
@@ -56,8 +54,7 @@ router.get('/stats', auth, async (req, res) => {
       }),
       Service.countDocuments({ requester: userId })
     ]);
-
-    // Calculate average rating from completed services
+    
     const completedServicesWithRating = await Service.find({ 
       provider: userId, 
       status: 'completed',

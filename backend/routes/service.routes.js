@@ -18,57 +18,66 @@ router.get('/recent', async (req, res) => {
   }
 });
 
-// Get all services with pagination and filtering
-router.get('/', async (req, res) => {
+// Get services
+router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 6, status, category, search, sortBy } = req.query;
-    const skip = (page - 1) * limit;
-
-    // Build filter query
-    const filter = {};
-    if (status && status !== 'all') {
-      filter.status = status;
-    }
-    if (category && category !== 'all') {
-      filter.category = category;
-    }
+    const { page = 1, limit = 10, status, category, search, sortBy, skillsRequired, skillsOffered } = req.query;
+    const query = {};
+    
+    // Add filters
+    if (status && status !== 'all') query.status = status;
+    if (category && category !== 'all') query.category = category;
     if (search) {
-      filter.$or = [
+      query.$or = [
         { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { skillsRequired: { $regex: search, $options: 'i' } },
-        { skillsOffered: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } }
       ];
     }
-
-    // Build sort query
-    let sort = { createdAt: -1 }; // Default sort
-    if (sortBy === 'oldest') {
-      sort = { createdAt: 1 };
-    } else if (sortBy === 'credits') {
-      sort = { creditsOffered: -1 };
-    } else if (sortBy === 'credits-low') {
-      sort = { creditsOffered: 1 };
+    if (skillsRequired) {
+      query.skillsRequired = { $in: skillsRequired.split(',').map(skill => skill.trim()) };
+    }
+    if (skillsOffered) {
+      query.skillsOffered = { $in: skillsOffered.split(',').map(skill => skill.trim()) };
     }
 
-    const [services, total] = await Promise.all([
-      Service.find(filter)
-        .populate('requester', 'firstName lastName email')
-        .populate('provider', 'firstName lastName email')
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit)),
-      Service.countDocuments(filter)
-    ]);
+    // Add sorting
+    let sort = {};
+    switch (sortBy) {
+      case 'oldest':
+        sort = { createdAt: 1 };
+        break;
+      case 'credits':
+        sort = { credits: -1 };
+        break;
+      case 'credits-low':
+        sort = { credits: 1 };
+        break;
+      default: // newest
+        sort = { createdAt: -1 };
+    }
+
+    const services = await Service.find(query)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email')
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+
+    const total = await Service.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       services,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit)
+      totalPages,
+      currentPage: parseInt(page),
+      total
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching services', error: error.message });
+    console.error('Error fetching services:', error);
+    res.status(500).json({ 
+      message: 'Error fetching services',
+      error: error.message 
+    });
   }
 });
 
@@ -76,16 +85,16 @@ router.get('/', async (req, res) => {
 router.get('/accepted', auth, async (req, res) => {
   try {
     console.log('GET /accepted route hit:', {
-      userId: req.user.userId,
+      userId: req.userId,
       method: req.method,
       url: req.originalUrl
     });
 
-    if (!req.user || !req.user.userId) {
+    if (!req.userId) {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
-    const userId = req.user.userId;
+    const userId = req.userId;
 
     const services = await Service.find({
       $or: [
@@ -163,7 +172,13 @@ router.post('/', auth, async (req, res) => {
     });
 
     await service.save();
-    res.status(201).json(service);
+    
+    // Get the created service with populated requester information
+    const populatedService = await Service.findById(service._id)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
+      
+    res.status(201).json(populatedService);
   } catch (error) {
     console.error('Error creating service:', error);
     res.status(400).json({ 
@@ -179,7 +194,8 @@ router.post('/:id/apply', auth, async (req, res) => {
     id: req.params.id,
     userId: req.user.userId,
     method: req.method,
-    url: req.originalUrl
+    url: req.originalUrl,
+    body: req.body
   });
   
   try {
@@ -193,8 +209,8 @@ router.post('/:id/apply', auth, async (req, res) => {
       return res.status(404).json({ message: 'Service not found' });
     }
 
-    if (service.status !== 'open') {
-      return res.status(400).json({ message: 'Service is not open for applications' });
+    if (service.status !== 'available') {
+      return res.status(400).json({ message: 'Service is not available for applications' });
     }
 
     if (service.requester._id.toString() === req.user.userId) {
@@ -228,27 +244,108 @@ router.post('/:id/apply', auth, async (req, res) => {
   }
 });
 
-// Mark service as completed (provider)
-router.put('/:id/complete', auth, async (req, res) => {
+// Accept service request
+router.post('/:id/accept', auth, async (req, res) => {
   try {
-    console.log('PUT /:id/complete route hit:', {
-      id: req.params.id,
-      userId: req.user.userId,
+    console.log('Accept service request:', {
+      serviceId: req.params.id,
+      userId: req.userId,
       method: req.method,
-      url: req.originalUrl,
-      headers: req.headers
+      url: req.originalUrl
     });
 
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      console.log('Invalid service ID format:', req.params.id);
-      return res.status(400).json({ message: 'Invalid service ID format' });
+    // First find the service without population to check basic properties
+    const service = await Service.findById(req.params.id);
+    
+    if (!service) {
+      console.log('Service not found:', req.params.id);
+      return res.status(404).json({ message: 'Service not found' });
     }
 
-    const service = await Service.findById(req.params.id)
-      .populate('requester', 'credits firstName lastName email')
-      .populate('provider', 'credits firstName lastName email');
+    // Check if service is available
+    if (service.status !== 'available') {
+      return res.status(400).json({ 
+        message: 'Service is not available for acceptance',
+        currentStatus: service.status
+      });
+    }
 
-    console.log('Found service:', service);
+    // Check if service already has a provider
+    if (service.provider) {
+      return res.status(400).json({ message: 'Service already has a provider' });
+    }
+
+    // Check if the user is the requester
+    const requesterId = service.requester?.toString();
+    const userId = req.userId?.toString();
+
+    console.log('Comparing IDs:', {
+      requesterId,
+      userId,
+      areEqual: requesterId === userId,
+      requesterType: typeof requesterId,
+      userIdType: typeof userId,
+      rawRequester: service.requester,
+      rawUserId: req.userId
+    });
+
+    // Only prevent if user is the requester
+    if (requesterId && userId && requesterId === userId) {
+      console.log('User attempted to accept their own service');
+      return res.status(403).json({ message: 'Cannot accept your own service request' });
+    }
+
+    // Update service status to in-progress and set provider
+    service.status = 'in-progress';
+    service.provider = new mongoose.Types.ObjectId(req.userId); // Ensure provider is set as ObjectId
+    service.updatedAt = new Date();
+    
+    console.log('Saving updated service:', {
+      id: service._id,
+      status: service.status,
+      provider: service.provider
+    });
+
+    await service.save();
+
+    // Get the final updated service with populated fields
+    const updatedService = await Service.findById(service._id)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
+
+    console.log('Sending response with updated service:', {
+      id: updatedService._id,
+      status: updatedService.status,
+      provider: updatedService.provider ? {
+        id: updatedService.provider._id,
+        name: `${updatedService.provider.firstName} ${updatedService.provider.lastName}`
+      } : 'No provider'
+    });
+
+    res.json(updatedService);
+  } catch (error) {
+    console.error('Error accepting service:', error);
+    res.status(500).json({ 
+      message: 'Error accepting service',
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// Mark service as completed (provider)
+router.post('/:id/complete', auth, async (req, res) => {
+  try {
+    console.log('Complete service request:', {
+      serviceId: req.params.id,
+      userId: req.userId,
+      method: req.method,
+      url: req.originalUrl
+    });
+
+    const service = await Service.findById(req.params.id)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
 
     if (!service) {
       console.log('Service not found:', req.params.id);
@@ -256,62 +353,74 @@ router.put('/:id/complete', auth, async (req, res) => {
     }
 
     // Check if the user is the provider
-    if (!service.provider || service.provider._id.toString() !== req.user.userId) {
-      console.log('User is not the provider:', {
-        serviceProvider: service.provider?._id.toString(),
-        userId: req.user.userId
-      });
+    const providerId = service.provider?._id?.toString();
+    const userId = req.userId?.toString();
+
+    console.log('Provider check:', {
+      providerId,
+      userId,
+      areEqual: providerId === userId,
+      providerType: typeof providerId,
+      userIdType: typeof userId,
+      rawProvider: service.provider,
+      rawUserId: req.userId
+    });
+
+    if (!providerId || !userId || providerId !== userId) {
       return res.status(403).json({ message: 'Only the provider can mark the service as completed' });
     }
 
     // Check if the service is in progress
     if (service.status !== 'in-progress') {
-      console.log('Service is not in progress:', service.status);
-      return res.status(400).json({ message: 'Service must be in progress to be marked as completed' });
+      return res.status(400).json({ 
+        message: 'Service must be in progress to be marked as completed',
+        currentStatus: service.status
+      });
     }
 
     // Update service status to pending-confirmation
     service.status = 'pending-confirmation';
     service.updatedAt = new Date();
+    
+    console.log('Saving updated service:', {
+      id: service._id,
+      status: service.status,
+      provider: service.provider
+    });
+
     await service.save();
 
-    // Notify the requester
-    const io = req.app.get('io');
-    if (io && service.requester) {
-      io.to(service.requester._id.toString()).emit('servicePendingConfirmation', {
-        serviceId: service._id,
-        title: service.title,
-        provider: service.provider
-      });
-    }
+    // Get the updated service with populated fields
+    const updatedService = await Service.findById(service._id)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
 
-    console.log('Service marked as pending confirmation:', service._id);
-    res.json({
-      message: 'Service marked as completed. Waiting for requester confirmation.',
-      service: service
+    console.log('Sending response with updated service:', {
+      id: updatedService._id,
+      status: updatedService.status,
+      provider: updatedService.provider ? {
+        id: updatedService.provider._id,
+        name: `${updatedService.provider.firstName} ${updatedService.provider.lastName}`
+      } : 'No provider'
     });
+
+    res.json(updatedService);
   } catch (error) {
-    console.error('Error completing service:', error);
-    if (error.name === 'CastError') {
-      return res.status(400).json({ message: 'Invalid service ID' });
-    }
-    res.status(500).json({ message: 'Error completing service', error: error.message });
+    console.error('Error marking service as completed:', error);
+    res.status(500).json({ 
+      message: 'Error marking service as completed',
+      error: error.message,
+      stack: error.stack
+    });
   }
 });
 
-// Complete service request (requester)
+// Confirm service completion (requester)
 router.post('/:id/confirm-completion', auth, async (req, res) => {
   try {
-    console.log('POST /:id/confirm-completion route hit:', {
-      id: req.params.id,
-      userId: req.user.userId,
-      method: req.method,
-      url: req.originalUrl
-    });
-
     const service = await Service.findById(req.params.id)
-      .populate('requester', 'credits firstName lastName email rating')
-      .populate('provider', 'credits firstName lastName email rating');
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
 
     if (!service) {
       return res.status(404).json({ message: 'Service not found' });
@@ -325,101 +434,23 @@ router.post('/:id/confirm-completion', auth, async (req, res) => {
       return res.status(400).json({ message: 'Service must be in pending-confirmation status' });
     }
 
-    // Start a session for transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    // Update service status to completed
+    service.status = 'completed';
+    service.completedAt = new Date();
+    await service.save();
 
-    try {
-      // Update service status
-      service.status = 'completed';
-      service.completedAt = new Date();
-      await service.save({ session });
+    // Get the updated service with populated fields
+    const updatedService = await Service.findById(service._id)
+      .populate('requester', 'firstName lastName email')
+      .populate('provider', 'firstName lastName email');
 
-      // Update provider's credits and rating
-      if (service.provider) {
-        // Update credits
-        if (service.provider.credits !== undefined) {
-          service.provider.credits = (service.provider.credits || 0) + service.credits;
-        }
-
-        // Calculate new rating
-        const completedServices = await Service.countDocuments({
-          provider: service.provider._id,
-          status: 'completed'
-        });
-
-        // Get all completed services with ratings
-        const ratedServices = await Service.find({
-          provider: service.provider._id,
-          status: 'completed',
-          'feedback.fromRequester.rating': { $exists: true }
-        });
-
-        // Calculate average rating
-        const totalRating = ratedServices.reduce((sum, s) => sum + (s.feedback.fromRequester.rating || 0), 0);
-        const averageRating = ratedServices.length > 0 ? totalRating / ratedServices.length : 0;
-
-        // Update provider's rating
-        service.provider.rating = averageRating;
-        await service.provider.save({ session });
-      }
-
-      // Update requester's credits
-      if (service.requester && service.requester.credits !== undefined) {
-        service.requester.credits = (service.requester.credits || 0) - service.credits;
-        await service.requester.save({ session });
-      }
-
-      // Commit the transaction
-      await session.commitTransaction();
-
-      // Notify both parties
-      const io = req.app.get('io');
-      if (io) {
-        // Notify provider
-        if (service.provider) {
-          io.to(service.provider._id.toString()).emit('serviceCompleted', {
-            serviceId: service._id,
-            title: service.title,
-            credits: service.credits,
-            newRating: service.provider.rating
-          });
-        }
-        // Notify requester
-        if (service.requester) {
-          io.to(service.requester._id.toString()).emit('serviceCompleted', {
-            serviceId: service._id,
-            title: service.title,
-            credits: service.credits
-          });
-        }
-      }
-
-      console.log('Service completion confirmed and credits transferred:', {
-        serviceId: service._id,
-        providerCredits: service.provider.credits,
-        providerRating: service.provider.rating,
-        requesterCredits: service.requester.credits
-      });
-
-      res.json({
-        message: 'Service completion confirmed and credits transferred successfully',
-        service: service,
-        provider: {
-          credits: service.provider.credits,
-          rating: service.provider.rating
-        }
-      });
-    } catch (error) {
-      // If an error occurred, abort the transaction
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
-    }
+    res.json(updatedService);
   } catch (error) {
     console.error('Error confirming service completion:', error);
-    res.status(500).json({ message: 'Error confirming service completion', error: error.message });
+    res.status(500).json({ 
+      message: 'Error confirming service completion',
+      error: error.message 
+    });
   }
 });
 
@@ -571,62 +602,6 @@ router.delete('/:id', auth, async (req, res) => {
     res.json({ message: 'Service deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting service', error: error.message });
-  }
-});
-
-// Accept service request
-router.post('/:id/accept', auth, async (req, res) => {
-  try {
-    console.log('Accepting service:', {
-      serviceId: req.params.id,
-      userId: req.user.userId
-    });
-
-    const service = await Service.findById(req.params.id)
-      .populate('requester', 'firstName lastName email')
-      .populate('provider', 'firstName lastName email');
-
-    if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
-    }
-
-    // Check if the user is the requester (can't accept own service)
-    if (service.requester._id.toString() === req.user.userId) {
-      return res.status(403).json({ message: 'Cannot accept your own service request' });
-    }
-
-    // Check if service is available
-    if (service.status !== 'available') {
-      return res.status(400).json({ 
-        message: 'Service is not available for acceptance',
-        currentStatus: service.status
-      });
-    }
-
-    // Check if service already has a provider
-    if (service.provider) {
-      return res.status(400).json({ message: 'Service already has a provider' });
-    }
-
-    // Update service status to in-progress
-    service.status = 'in-progress';
-    service.provider = req.user.userId;
-    service.updatedAt = new Date();
-    
-    await service.save();
-
-    // Get the updated service with populated fields
-    const updatedService = await Service.findById(service._id)
-      .populate('requester', 'firstName lastName email')
-      .populate('provider', 'firstName lastName email');
-
-    res.json(updatedService);
-  } catch (error) {
-    console.error('Error accepting service:', error);
-    res.status(500).json({ 
-      message: 'Error accepting service',
-      error: error.message 
-    });
   }
 });
 

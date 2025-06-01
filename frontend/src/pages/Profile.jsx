@@ -28,11 +28,23 @@ import axios from 'axios';
 
 const Profile = () => {
   const { user, updateUser } = useAuth();
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    profilePicture: '',
+    skills: []
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
-  const [editedProfile, setEditedProfile] = useState(null);
+  const [editedProfile, setEditedProfile] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    profilePicture: '',
+    skills: []
+  });
   const [openPortfolioDialog, setOpenPortfolioDialog] = useState(false);
   const [newPortfolioItem, setNewPortfolioItem] = useState({
     title: '',
@@ -53,15 +65,25 @@ const Profile = () => {
   const fetchProfile = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/users/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (!token) {
+        setError('Please login to view your profile');
+        setLoading(false);
+        return;
+      }
+
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/users/profile`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      
       setProfile(response.data);
       setEditedProfile(response.data);
       setLoading(false);
     } catch (err) {
       console.error('Error fetching profile:', err);
-      setError('Failed to load profile');
+      setError(err.response?.data?.message || 'Failed to load profile');
       setLoading(false);
     }
   };
@@ -69,19 +91,31 @@ const Profile = () => {
   const handleProfileUpdate = async () => {
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Please login to update your profile');
+        return;
+      }
+
       const response = await axios.put(
-        'http://localhost:5000/api/users/profile',
+        `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/users/profile`,
         editedProfile,
         {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
       );
-      setProfile(response.data);
-      updateUser(response.data);
-      setEditMode(false);
+      
+      if (response.data) {
+        setProfile(response.data);
+        updateUser(response.data);
+        setEditMode(false);
+        setError('');
+      }
     } catch (err) {
       console.error('Error updating profile:', err);
-      setError('Failed to update profile');
+      setError(err.response?.data?.message || 'Failed to update profile');
     }
   };
 
@@ -150,26 +184,86 @@ const Profile = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
+    <Container maxWidth="lg" sx={{ 
+      mb: 4,
+      marginTop: '84px', // Add margin to account for fixed navbar
+      position: 'relative',
+      overflow: 'hidden',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: '10%',
+        right: '-10%',
+        width: '300px',
+        height: '300px',
+        background: 'radial-gradient(circle, rgba(25,118,210,0.1) 0%, rgba(25,118,210,0) 70%)',
+        borderRadius: '50%',
+        zIndex: 0,
+      },
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        bottom: '10%',
+        left: '-10%',
+        width: '300px',
+        height: '300px',
+        background: 'radial-gradient(circle, rgba(25,118,210,0.1) 0%, rgba(25,118,210,0) 70%)',
+        borderRadius: '50%',
+        zIndex: 0,
+      }
+    }}>
+      <Paper elevation={3} sx={{ 
+        p: 4,
+        position: 'relative',
+        overflow: 'hidden',
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-5px)',
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
+        }
+      }}>
         <Grid container spacing={4}>
           {/* Profile Section */}
           <Grid item xs={12} md={4}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center',
+              position: 'relative',
+            }}>
               <Avatar
-                src={profile?.avatar}
-                sx={{ width: 150, height: 150, mb: 2 }}
+                src={profile?.profilePicture}
+                sx={{ 
+                  width: 150, 
+                  height: 150, 
+                  mb: 2,
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'scale(1.05)',
+                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)',
+                  }
+                }}
               />
               {editMode ? (
                 <TextField
                   fullWidth
                   label="Avatar URL"
-                  value={editedProfile?.avatar}
-                  onChange={(e) => setEditedProfile({ ...editedProfile, avatar: e.target.value })}
+                  value={editedProfile?.profilePicture}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, profilePicture: e.target.value })}
                   sx={{ mb: 2 }}
                 />
               ) : (
-                <Typography variant="h5" gutterBottom>
+                <Typography variant="h5" gutterBottom sx={{ 
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(45deg, #2196f3 30%, #1976d2 90%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  animation: 'gradient 3s ease infinite',
+                }}>
                   {profile?.firstName} {profile?.lastName}
                 </Typography>
               )}
@@ -184,7 +278,10 @@ const Profile = () => {
                   sx={{ mb: 2 }}
                 />
               ) : (
-                <Typography variant="body1" color="text.secondary" align="center">
+                <Typography variant="body1" color="text.secondary" align="center" sx={{ 
+                  opacity: 0.9,
+                  lineHeight: 1.6,
+                }}>
                   {profile?.bio}
                 </Typography>
               )}
@@ -201,9 +298,25 @@ const Profile = () => {
                     label="First Name"
                     value={editedProfile?.firstName}
                     onChange={(e) => setEditedProfile({ ...editedProfile, firstName: e.target.value })}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                        }
+                      }
+                    }}
                   />
                 ) : (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ 
+                    fontWeight: 'medium',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateX(5px)',
+                      color: 'primary.main',
+                    }
+                  }}>
                     <strong>First Name:</strong> {profile?.firstName}
                   </Typography>
                 )}
@@ -215,9 +328,25 @@ const Profile = () => {
                     label="Last Name"
                     value={editedProfile?.lastName}
                     onChange={(e) => setEditedProfile({ ...editedProfile, lastName: e.target.value })}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                        }
+                      }
+                    }}
                   />
                 ) : (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ 
+                    fontWeight: 'medium',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateX(5px)',
+                      color: 'primary.main',
+                    }
+                  }}>
                     <strong>Last Name:</strong> {profile?.lastName}
                   </Typography>
                 )}
@@ -229,9 +358,25 @@ const Profile = () => {
                     label="Email"
                     value={editedProfile?.email}
                     onChange={(e) => setEditedProfile({ ...editedProfile, email: e.target.value })}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                        }
+                      }
+                    }}
                   />
                 ) : (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ 
+                    fontWeight: 'medium',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateX(5px)',
+                      color: 'primary.main',
+                    }
+                  }}>
                     <strong>Email:</strong> {profile?.email}
                   </Typography>
                 )}
@@ -243,9 +388,25 @@ const Profile = () => {
                     label="GitHub Profile"
                     value={editedProfile?.githubProfile}
                     onChange={(e) => setEditedProfile({ ...editedProfile, githubProfile: e.target.value })}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                        }
+                      }
+                    }}
                   />
                 ) : (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ 
+                    fontWeight: 'medium',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateX(5px)',
+                      color: 'primary.main',
+                    }
+                  }}>
                     <strong>GitHub:</strong>{' '}
                     {profile?.githubProfile ? (
                       <a href={profile.githubProfile} target="_blank" rel="noopener noreferrer">
@@ -264,9 +425,25 @@ const Profile = () => {
                     label="LinkedIn Profile"
                     value={editedProfile?.linkedinProfile}
                     onChange={(e) => setEditedProfile({ ...editedProfile, linkedinProfile: e.target.value })}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                        }
+                      }
+                    }}
                   />
                 ) : (
-                  <Typography variant="body1">
+                  <Typography variant="body1" sx={{ 
+                    fontWeight: 'medium',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateX(5px)',
+                      color: 'primary.main',
+                    }
+                  }}>
                     <strong>LinkedIn:</strong>{' '}
                     {profile?.linkedinProfile ? (
                       <a href={profile.linkedinProfile} target="_blank" rel="noopener noreferrer">
@@ -282,7 +459,10 @@ const Profile = () => {
 
             {/* Skills Section */}
             <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" gutterBottom sx={{ 
+                fontWeight: 'bold',
+                color: 'primary.main',
+              }}>
                 Skills
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -291,6 +471,13 @@ const Profile = () => {
                     key={index}
                     label={`${skill.name} (${skill.level})`}
                     color={skill.verified ? 'success' : 'default'}
+                    sx={{ 
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                      }
+                    }}
                   />
                 ))}
               </Box>
@@ -299,11 +486,25 @@ const Profile = () => {
             {/* Portfolio Section */}
             <Box sx={{ mt: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Portfolio</Typography>
+                <Typography variant="h6" sx={{ 
+                  fontWeight: 'bold',
+                  color: 'primary.main',
+                }}>
+                  Portfolio
+                </Typography>
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
                   onClick={() => setOpenPortfolioDialog(true)}
+                  sx={{ 
+                    background: 'linear-gradient(45deg, #2196f3 30%, #1976d2 90%)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                      background: 'linear-gradient(45deg, #1976d2 30%, #1565c0 90%)',
+                    },
+                  }}
                 >
                   Add Project
                 </Button>
@@ -311,9 +512,16 @@ const Profile = () => {
               <Grid container spacing={2}>
                 {profile?.portfolio?.map((item, index) => (
                   <Grid item xs={12} sm={6} md={4} key={index}>
-                    <Card>
+                    <Card sx={{ 
+                      height: '100%',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'translateY(-5px)',
+                        boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                      }
+                    }}>
                       <CardContent>
-                        <Typography variant="h6" gutterBottom>
+                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
                           {item.title}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" paragraph>
@@ -321,7 +529,20 @@ const Profile = () => {
                         </Typography>
                         <Box sx={{ mb: 2 }}>
                           {item.technologies?.map((tech, i) => (
-                            <Chip key={i} label={tech} size="small" sx={{ mr: 1, mb: 1 }} />
+                            <Chip 
+                              key={i} 
+                              label={tech} 
+                              size="small" 
+                              sx={{ 
+                                mr: 1, 
+                                mb: 1,
+                                transition: 'all 0.3s ease',
+                                '&:hover': {
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                                }
+                              }} 
+                            />
                           ))}
                         </Box>
                         {item.startDate && (
@@ -333,12 +554,32 @@ const Profile = () => {
                       </CardContent>
                       <CardActions>
                         {item.link && (
-                          <Button size="small" href={item.link} target="_blank">
+                          <Button 
+                            size="small" 
+                            href={item.link} 
+                            target="_blank"
+                            sx={{
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateX(5px)',
+                              }
+                            }}
+                          >
                             View Project
                           </Button>
                         )}
                         {item.githubLink && (
-                          <Button size="small" href={item.githubLink} target="_blank">
+                          <Button 
+                            size="small" 
+                            href={item.githubLink} 
+                            target="_blank"
+                            sx={{
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateX(5px)',
+                              }
+                            }}
+                          >
                             GitHub
                           </Button>
                         )}
@@ -358,13 +599,29 @@ const Profile = () => {
               <Button
                 variant="outlined"
                 onClick={() => setEditMode(false)}
-                sx={{ mr: 2 }}
+                sx={{ 
+                  mr: 2,
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                  }
+                }}
               >
                 Cancel
               </Button>
               <Button
                 variant="contained"
                 onClick={handleProfileUpdate}
+                sx={{ 
+                  background: 'linear-gradient(45deg, #2196f3 30%, #1976d2 90%)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                    background: 'linear-gradient(45deg, #1976d2 30%, #1565c0 90%)',
+                  },
+                }}
               >
                 Save Changes
               </Button>
@@ -374,6 +631,15 @@ const Profile = () => {
               variant="contained"
               startIcon={<EditIcon />}
               onClick={() => setEditMode(true)}
+              sx={{ 
+                background: 'linear-gradient(45deg, #2196f3 30%, #1976d2 90%)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                  background: 'linear-gradient(45deg, #1976d2 30%, #1565c0 90%)',
+                },
+              }}
             >
               Edit Profile
             </Button>
@@ -382,7 +648,18 @@ const Profile = () => {
       </Paper>
 
       {/* Add Portfolio Item Dialog */}
-      <Dialog open={openPortfolioDialog} onClose={() => setOpenPortfolioDialog(false)} maxWidth="md" fullWidth>
+      <Dialog 
+        open={openPortfolioDialog} 
+        onClose={() => setOpenPortfolioDialog(false)} 
+        maxWidth="md" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+          }
+        }}
+      >
         <DialogTitle>Add New Project</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>

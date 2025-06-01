@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container,
   Paper,
   Typography,
-  Box,
   Button,
+  Grid,
   Chip,
+  Box,
+  Avatar,
+  Divider,
   CircularProgress,
   Alert,
-  Grid,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -19,6 +20,7 @@ import {
   Rating,
   Snackbar,
 } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -26,17 +28,15 @@ import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ChatIcon from '@mui/icons-material/Chat';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { useAuth } from '../context/AuthContext';
+import ChatDialog from '../components/ChatDialog';
 
-function ServiceDetails() {
+const ServiceDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [applying, setApplying] = useState(false);
-  const [completing, setCompleting] = useState(false);
+  const [error, setError] = useState(null);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [rating, setRating] = useState(0);
@@ -44,210 +44,122 @@ function ServiceDetails() {
   const [successMessage, setSuccessMessage] = useState('');
   const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [requester, setRequester] = useState(null);
 
   useEffect(() => {
-    if (id === 'new') {
-      navigate('/services/new');
-      return;
-    }
-    fetchServiceDetails();
-  }, [id, navigate]);
+    const fetchServiceAndRequester = async () => {
+      try {
+        // Fetch service details
+        const serviceResponse = await axios.get(`/api/services/${id}`);
+        setService(serviceResponse.data);
 
-  const fetchServiceDetails = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await axios.get(`http://localhost:5000/api/services/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (response.data) {
-        setService(response.data);
-      } else {
-        setError('Service not found');
-      }
-    } catch (err) {
-      console.error('Error fetching service details:', err);
-      setError(err.response?.data?.message || 'Failed to load service details');
-      
-      if (err.response?.status === 401) {
-        navigate('/login');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApply = async () => {
-    try {
-      setApplying(true);
-      setError('');
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await axios.post(
-        `http://localhost:5000/api/services/${id}/apply`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` }
+        // Fetch requester details if requester exists
+        if (serviceResponse.data.requester?._id) {
+          const requesterResponse = await axios.get(`/api/users/${serviceResponse.data.requester._id}`);
+          setRequester(requesterResponse.data);
         }
-      );
-      
-      if (response.data) {
-        setService(response.data);
-        setSuccessMessage('Successfully applied for the service!');
-        setShowSuccessSnackbar(true);
+
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setError('Failed to load service details');
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error applying for service:', err);
-      setError(err.response?.data?.message || 'Failed to apply for service');
-      
-      if (err.response?.status === 401) {
-        navigate('/login');
-      }
-    } finally {
-      setApplying(false);
-    }
-  };
+    };
+
+    fetchServiceAndRequester();
+  }, [id]);
 
   const handleComplete = async () => {
     try {
-      setCompleting(true);
-      setError('');
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await axios.put(
-        `http://localhost:5000/api/services/${id}/complete`,
-        {},
-        {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+      const response = await axios.post(`/api/services/${id}/complete`, {}, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
-      );
+      });
+      setService(response.data);
+      setShowCompleteDialog(false);
+      setSuccessMessage('Service marked as completed!');
+      setShowSuccessSnackbar(true);
+    } catch (error) {
+      console.error('Error completing service:', error);
+      let errorMessage = 'Failed to complete service';
       
-      if (response.data) {
-        setService(response.data.service);
-        setShowCompleteDialog(false);
-        setSuccessMessage('Service marked as completed! Waiting for requester confirmation.');
-        setShowSuccessSnackbar(true);
+      if (error.response) {
+        errorMessage = error.response.data?.message || errorMessage;
+      } else if (error.request) {
+        errorMessage = 'No response from server. Please try again.';
       }
-    } catch (err) {
-      console.error('Error completing service:', err);
-      setError(err.response?.data?.message || 'Failed to mark service as completed');
       
-      if (err.response?.status === 401) {
-        navigate('/login');
-      }
-    } finally {
-      setCompleting(false);
+      setError(errorMessage);
+      setShowCompleteDialog(false);
     }
   };
 
   const handleConfirmCompletion = async () => {
     try {
-      setError('');
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await axios.post(
-        `http://localhost:5000/api/services/${id}/confirm-completion`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` }
+      const response = await axios.post(`/api/services/${id}/confirm-completion`, {}, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
-      );
+      });
+      setService(response.data);
+      setShowConfirmationDialog(false);
+      setSuccessMessage('Service completion confirmed!');
+      setShowSuccessSnackbar(true);
+    } catch (error) {
+      console.error('Error confirming completion:', error);
+      let errorMessage = 'Failed to confirm service completion';
       
-      if (response.data) {
-        setService(response.data.service);
-        setShowConfirmationDialog(false);
-        setSuccessMessage('Service completion confirmed!');
-        setShowSuccessSnackbar(true);
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        errorMessage = error.response.data?.message || errorMessage;
+      } else if (error.request) {
+        // The request was made but no response was received
+        errorMessage = 'No response from server. Please try again.';
       }
-    } catch (err) {
-      console.error('Error confirming service completion:', err);
-      setError(err.response?.data?.message || 'Failed to confirm service completion');
       
-      if (err.response?.status === 401) {
-        navigate('/login');
-      }
+      setError(errorMessage);
+      setShowConfirmationDialog(false);
     }
   };
 
   const handleRate = async () => {
     try {
-      setError('');
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await axios.post(
-        `http://localhost:5000/api/services/${id}/rate`,
-        { rating, comment },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-      
-      if (response.data) {
-        setService(response.data.service);
-        setShowRatingDialog(false);
-        setSuccessMessage('Rating added successfully!');
-        setShowSuccessSnackbar(true);
-        setRating(0);
-        setComment('');
-      }
-    } catch (err) {
-      console.error('Error adding rating:', err);
-      setError(err.response?.data?.message || 'Failed to add rating');
-      
-      if (err.response?.status === 401) {
-        navigate('/login');
-      }
+      const response = await axios.post(`/api/services/${id}/rate`, { rating, comment });
+      setService(response.data);
+      setShowRatingDialog(false);
+      setSuccessMessage('Rating submitted successfully!');
+      setShowSuccessSnackbar(true);
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      setError('Failed to submit rating');
     }
   };
 
-  const isProvider = user && service && service.provider && service.provider._id === user.userId;
-  const isRequester = user && service && service.requester && service.requester._id === user.userId;
-
-  console.log('Service Details:', {
-    user: user?.userId,
-    provider: service?.provider?._id,
-    requester: service?.requester?._id,
-    status: service?.status,
-    isProvider,
-    isRequester
-  });
+  const handleChatClick = () => {
+    if (service?.requester) {
+      navigate(`/chat/${service.requester._id}`, {
+        state: {
+          otherUser: {
+            _id: service.requester._id,
+            firstName: service.requester.firstName,
+            lastName: service.requester.lastName,
+            profilePicture: service.requester.profilePicture
+          },
+          serviceId: id
+        }
+      });
+    }
+  };
 
   if (loading) {
     return (
-      <Container sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
-      </Container>
+      </Box>
     );
   }
 
@@ -262,14 +174,30 @@ function ServiceDetails() {
   if (!service) {
     return (
       <Container sx={{ mt: 4 }}>
-        <Alert severity="warning">Service not found</Alert>
+        <Alert severity="info">Service not found</Alert>
       </Container>
     );
   }
 
+  const isRequester = service?.requester?._id === user?._id;
+  const isProvider = service?.provider?._id === user?._id;
+
+  console.log('Detailed Debug Info:', {
+    serviceId: id,
+    userId: user?._id,
+    requesterId: service?.requester?._id,
+    providerId: service?.provider?._id,
+    serviceStatus: service?.status,
+    isRequester,
+    isProvider,
+    user: user,
+    service: service
+  });
+
   return (
-    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Button
+        variant="outlined"
         startIcon={<ArrowBackIcon />}
         onClick={() => navigate(-1)}
         sx={{ mb: 2 }}
@@ -279,92 +207,46 @@ function ServiceDetails() {
 
       <Paper elevation={3} sx={{ p: 3 }}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h4" component="h1">
+          <Grid item xs={12} md={8}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h4" gutterBottom>
                 {service.title}
               </Typography>
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                {service.provider && (
-                  <Button
-                    component={Link}
-                    to={`/chat/${service.provider._id}`}
-                    variant="contained"
-                    startIcon={<ChatIcon />}
-                  >
-                    Chat with Provider
-                  </Button>
-                )}
-                {isProvider && service.status === 'in-progress' && (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={() => setShowCompleteDialog(true)}
-                  >
-                    Mark as Completed
-                  </Button>
-                )}
-              </Box>
+              <Typography variant="body1" color="text.secondary" paragraph>
+                {service.description}
+              </Typography>
             </Box>
-          </Grid>
-
-          <Grid item xs={12}>
-            <Chip
-              label={service.status}
-              color={
-                service.status === 'completed' ? 'success' :
-                service.status === 'in-progress' ? 'primary' :
-                'default'
-              }
-            />
-          </Grid>
-
-          <Grid item xs={12} md={8}>
-            <Typography variant="body1" paragraph>
-              {service.description}
-            </Typography>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>Skills Required</Typography>
+              <Typography variant="h6" gutterBottom>
+                Skills Required
+              </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {service.skillsRequired && service.skillsRequired.map((skill, index) => (
-                  <Chip 
-                    key={index} 
-                    label={skill} 
-                    variant="outlined"
-                    sx={{
-                      borderColor: 'grey.300',
-                      color: 'text.secondary'
-                    }}
-                  />
+                {service.skillsRequired.map((skill) => (
+                  <Chip key={skill} label={skill} />
                 ))}
               </Box>
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>Skills Offered</Typography>
+              <Typography variant="h6" gutterBottom>
+                Skills Offered
+              </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {service.skillsOffered && service.skillsOffered.map((skill, index) => (
-                  <Chip 
-                    key={index} 
-                    label={skill} 
-                    variant="outlined"
-                    sx={{
-                      borderColor: 'grey.300',
-                      color: 'text.secondary'
-                    }}
-                  />
+                {service.skillsOffered.map((skill) => (
+                  <Chip key={skill} label={skill} />
                 ))}
               </Box>
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>Details</Typography>
+              <Typography variant="h6" gutterBottom>
+                Service Details
+              </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LocationOnIcon sx={{ color: 'grey.600' }} />
+                    <LocationOnIcon color="action" />
                     <Typography variant="body2" color="text.secondary">
                       {service.location}
                     </Typography>
@@ -372,17 +254,17 @@ function ServiceDetails() {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AccessTimeIcon sx={{ color: 'grey.600' }} />
+                    <AccessTimeIcon color="action" />
                     <Typography variant="body2" color="text.secondary">
-                      {service.duration}
+                      {service.duration} hours
                     </Typography>
                   </Box>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <PersonIcon sx={{ color: 'grey.600' }} />
+                    <PersonIcon color="action" />
                     <Typography variant="body2" color="text.secondary">
-                      Posted by: {service.requester?.firstName} {service.requester?.lastName}
+                      {service.requester?.firstName} {service.requester?.lastName}
                     </Typography>
                   </Box>
                 </Grid>
@@ -396,110 +278,112 @@ function ServiceDetails() {
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" gutterBottom>Service Status</Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Paper elevation={2} sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Service Status
+              </Typography>
+              <Chip
+                label={service.status}
+                color={
+                  service.status === 'completed'
+                    ? 'success'
+                    : service.status === 'in-progress'
+                    ? 'primary'
+                    : 'default'
+                }
+                sx={{ mb: 2 }}
+              />
+
+              <Typography variant="subtitle1" gutterBottom>
+                Category
+              </Typography>
+              <Chip label={service.category} sx={{ mb: 2 }} />
+
+              <Typography variant="subtitle1" gutterBottom>
+                Posted By
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <Avatar src={requester?.profilePicture} />
                 <Box>
-                  <Typography variant="body2" color="text.secondary">Category</Typography>
-                  <Typography variant="body1">{service.category || 'N/A'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Status</Typography>
-                  <Chip
-                    label={service.status || 'Unknown'}
-                    sx={{
-                      backgroundColor: service.status === 'completed' ? 'grey.200' :
-                                     service.status === 'in-progress' ? 'grey.200' :
-                                     'grey.200',
-                      color: 'text.secondary'
-                    }}
-                  />
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Posted Date</Typography>
-                  <Typography variant="body1">
-                    {service.createdAt ? new Date(service.createdAt).toLocaleDateString() : 'N/A'}
+                  <Typography variant="body2">
+                    {requester?.firstName} {requester?.lastName}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {requester?.email}
                   </Typography>
                 </Box>
-                {service.provider && (
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">Service Provider</Typography>
-                    <Typography variant="body1">
-                      {service.provider.firstName} {service.provider.lastName}
-                    </Typography>
-                  </Box>
-                )}
               </Box>
 
-              {service.status === 'in-progress' && (
-                <Box sx={{ mt: 2 }}>
-                  {isProvider ? (
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      fullWidth
-                      startIcon={<CheckCircleIcon />}
-                      onClick={() => setShowCompleteDialog(true)}
-                    >
-                      Mark as Completed
-                    </Button>
-                  ) : isRequester && service.provider && (
-                    <Box sx={{ 
-                      backgroundColor: 'grey.100',
-                      p: 2,
-                      borderRadius: 1,
-                      textAlign: 'center'
-                    }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Your service is being worked on by {service.provider.firstName} {service.provider.lastName}
+              {service.provider && (
+                <>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Provider
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Avatar src={service.provider.profilePicture} />
+                    <Box>
+                      <Typography variant="body2">
+                        {service.provider.firstName} {service.provider.lastName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {service.provider.email}
                       </Typography>
                     </Box>
-                  )}
-                </Box>
+                  </Box>
+                </>
               )}
 
-              {service.status === 'pending-confirmation' && isRequester && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  fullWidth
-                  startIcon={<CheckCircleIcon />}
-                  onClick={() => setShowConfirmationDialog(true)}
-                  sx={{ mt: 2 }}
-                >
-                  Confirm Completion
-                </Button>
-              )}
+              <Divider sx={{ my: 2 }} />
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {service.status === 'in-progress' && isProvider && (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    fullWidth
+                    onClick={() => setShowCompleteDialog(true)}
+                  >
+                    Mark as Completed
+                  </Button>
+                )}
+
+                {!isRequester && (
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    fullWidth
+                    onClick={handleChatClick}
+                  >
+                    Chat with Requester
+                  </Button>
+                )}
+
+                {service.status === 'pending-confirmation' && isRequester && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    onClick={() => setShowConfirmationDialog(true)}
+                  >
+                    Confirm Completion
+                  </Button>
+                )}
+
+                {service.status === 'completed' && (
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    fullWidth
+                    onClick={() => setShowRatingDialog(true)}
+                  >
+                    Rate Service
+                  </Button>
+                )}
+              </Box>
             </Paper>
           </Grid>
         </Grid>
       </Paper>
-
-      {service.status === 'completed' && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Service Completed
-          </Typography>
-          {!service.feedback?.fromRequester && isRequester && (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => setShowRatingDialog(true)}
-            >
-              Rate Service
-            </Button>
-          )}
-          {!service.feedback?.fromProvider && isProvider && (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => setShowRatingDialog(true)}
-            >
-              Rate Service
-            </Button>
-          )}
-        </Box>
-      )}
 
       <Dialog open={showCompleteDialog} onClose={() => setShowCompleteDialog(false)}>
         <DialogTitle>Mark Service as Completed</DialogTitle>
@@ -510,13 +394,8 @@ function ServiceDetails() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowCompleteDialog(false)}>Cancel</Button>
-          <Button
-            onClick={handleComplete}
-            variant="contained"
-            color="primary"
-            disabled={completing}
-          >
-            {completing ? 'Completing...' : 'Mark as Completed'}
+          <Button onClick={handleComplete} variant="contained" color="primary">
+            Mark as Completed
           </Button>
         </DialogActions>
       </Dialog>
@@ -553,21 +432,12 @@ function ServiceDetails() {
         <DialogTitle>Confirm Service Completion</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to confirm the completion of "{service.title}"?
+            Are you sure you want to confirm the completion of this service?
           </Typography>
-          {service.provider && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Service Provider: {service.provider.firstName} {service.provider.lastName}
-            </Typography>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowConfirmationDialog(false)}>Cancel</Button>
-          <Button
-            onClick={handleConfirmCompletion}
-            variant="contained"
-            color="primary"
-          >
+          <Button onClick={handleConfirmCompletion} variant="contained" color="primary">
             Confirm
           </Button>
         </DialogActions>
@@ -577,10 +447,26 @@ function ServiceDetails() {
         open={showSuccessSnackbar}
         autoHideDuration={6000}
         onClose={() => setShowSuccessSnackbar(false)}
-        message={successMessage}
-      />
+      >
+        <Alert 
+          onClose={() => setShowSuccessSnackbar(false)} 
+          severity="success" 
+          sx={{ width: '100%' }}
+        >
+          {successMessage}
+        </Alert>
+      </Snackbar>
+
+      {service && (
+        <ChatDialog
+          open={showChat}
+          onClose={() => setShowChat(false)}
+          serviceId={id}
+          otherUser={service?.provider?._id === user?._id ? service?.requester : service?.provider}
+        />
+      )}
     </Container>
   );
-}
+};
 
 export default ServiceDetails; 

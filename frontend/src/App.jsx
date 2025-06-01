@@ -14,12 +14,15 @@ import ServiceRequests from './pages/ServiceRequests';
 import Dashboard from './pages/Dashboard';
 import ServiceDetails from './pages/ServiceDetails';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import Chat from './pages/Chat';
+import IndividualChat from './pages/IndividualChat';
 
 // Configure axios defaults
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 axios.defaults.withCredentials = true;
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 axios.defaults.headers.common['Accept'] = 'application/json';
+axios.defaults.timeout = 10000; // 10 seconds timeout
 
 // Add response interceptor to handle CORS errors
 axios.interceptors.response.use(
@@ -31,7 +34,27 @@ axios.interceptors.response.use(
         console.error('CORS Error: Unable to connect to the server');
         return Promise.reject(new Error('Unable to connect to the server. Please check your connection.'));
       }
+      // Handle 401 Unauthorized errors
+      if (error.response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
+    return Promise.reject(error);
+  }
+);
+
+// Add request interceptor to handle CORS
+axios.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => {
     return Promise.reject(error);
   }
 );
@@ -135,6 +158,8 @@ function App() {
                     <Route path="/skill-exchange" element={<SkillExchange />} />
                     <Route path="/service-requests" element={<ServiceRequests />} />
                     <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/chat" element={<Chat />} />
+                    <Route path="/chat/:userId" element={<IndividualChat />} />
                   </Route>
                 </Routes>
               </Container>

@@ -171,7 +171,7 @@ function SkillExchange() {
                   Skills:
                 </Typography>
                 <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
-                  {user.skills.map((skill, index) => (
+                  {user.skills?.map((skill, index) => (
                     <Chip 
                       key={index} 
                       label={`${skill.name} (${skill.level})`} 
@@ -195,9 +195,16 @@ function SkillExchange() {
                   size="small"
                   color="primary"
                   startIcon={<MessageIcon />}
-                  onClick={() => handleOpenMessage(user)}
+                  onClick={() => navigate(`/chat/${user._id}`)}
+                  sx={{
+                    backgroundColor: 'primary.main',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: 'primary.dark',
+                    }
+                  }}
                 >
-                  Message
+                  Chat
                 </Button>
               </CardActions>
             </Card>

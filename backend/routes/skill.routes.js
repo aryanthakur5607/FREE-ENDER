@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const User = require('../models/user.model');
+const User = require('../models/User');
 
 // Get all skills (unique list from all users)
 router.get('/', async (req, res) => {

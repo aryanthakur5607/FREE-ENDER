@@ -1,5 +1,5 @@
 const express = require('express');
-const User = require('../models/user.model');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 const router = express.Router();
 const Service = require('../models/service.model');
@@ -7,8 +7,7 @@ const Service = require('../models/service.model');
 // Get user profile
 router.get('/profile', auth, async (req, res) => {
   try {
-    console.log('Fetching profile for user:', req.user.userId);
-    const user = await User.findById(req.user.userId).select('-password');
+    const user = await User.findById(req.user._id).select('-password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -22,76 +21,25 @@ router.get('/profile', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    console.log('Updating profile for user:', req.user.userId);
     const updates = Object.keys(req.body);
-    const allowedUpdates = [
-      'firstName', 
-      'lastName', 
-      'email', 
-      'bio',
-      'avatar',
-      'githubProfile',
-      'linkedinProfile',
-      'skills', 
-      'portfolio'
-    ];
+    const allowedUpdates = ['firstName', 'lastName', 'email', 'profilePicture', 'skills'];
     const isValidOperation = updates.every(update => allowedUpdates.includes(update));
 
     if (!isValidOperation) {
-      return res.status(400).json({ 
-        message: 'Invalid updates',
-        allowedUpdates 
-      });
+      return res.status(400).json({ message: 'Invalid updates' });
     }
 
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Handle portfolio updates
-    if (req.body.portfolio) {
-      user.portfolio = req.body.portfolio.map(item => ({
-        title: item.title,
-        description: item.description,
-        imageUrl: item.imageUrl,
-        link: item.link,
-        githubLink: item.githubLink,
-        technologies: item.technologies || [],
-        startDate: item.startDate ? new Date(item.startDate) : undefined,
-        endDate: item.endDate ? new Date(item.endDate) : undefined
-      }));
-    }
-
-    // Handle skills updates
-    if (req.body.skills) {
-      user.skills = req.body.skills.map(skill => ({
-        name: skill.name,
-        level: skill.level,
-        verified: skill.verified || false
-      }));
-    }
-
-    // Handle other updates
-    updates.forEach(update => {
-      if (update !== 'portfolio' && update !== 'skills') {
-        user[update] = req.body[update];
-      }
-    });
-
+    updates.forEach(update => user[update] = req.body[update]);
     await user.save();
 
-    // Return updated user without password
-    const updatedUser = await User.findById(user._id).select('-password');
-    res.json(updatedUser);
+    res.json(user);
   } catch (error) {
     console.error('Error updating profile:', error);
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ 
-        message: 'Validation error', 
-        errors: Object.values(error.errors).map(err => err.message)
-      });
-    }
     res.status(500).json({ message: 'Error updating profile', error: error.message });
   }
 });
