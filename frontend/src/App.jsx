@@ -18,7 +18,12 @@ import Chat from './pages/Chat';
 import IndividualChat from './pages/IndividualChat';
 
 // Configure axios defaults
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+console.log('Environment:', import.meta.env.MODE);
+console.log('Using API URL:', baseURL);
+console.log('Full API URL for auth:', `${baseURL}/api/auth/login`);
+
+axios.defaults.baseURL = baseURL;
 axios.defaults.withCredentials = true;
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 axios.defaults.headers.common['Accept'] = 'application/json';
@@ -28,6 +33,15 @@ axios.defaults.timeout = 10000; // 10 seconds timeout
 axios.interceptors.response.use(
   response => response,
   error => {
+    console.log('API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      headers: error.config?.headers
+    });
+    
     if (error.response) {
       // Handle specific CORS errors
       if (error.response.status === 0) {
